@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Этикетка CNH 72×100</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title">Этикетка CNH · Oil Filter</div>
+  <div id="status" class="status">…</div>
+</header>
+
+<main class="grid">
+
+  <!-- ------------------------------------------------------ левая колонка -->
+  <section class="panel">
+
+    <div id="indexBox" class="notice hidden">
+      <div id="indexText">Индекс каталога не построен — поиск по номеру недоступен.</div>
+      <progress id="indexBar" class="hidden" max="100" value="0"></progress>
+      <button id="indexBuild" class="btn">Построить индекс (≈2 мин, один раз)</button>
+    </div>
+
+    <fieldset>
+      <legend>Деталь</legend>
+      <div class="row">
+        <label for="pn">Каталожный номер</label>
+        <div class="inline">
+          <input id="pn" list="pnList" autocomplete="off" placeholder="84565867" spellcheck="false">
+          <button id="find" class="btn">Найти в каталоге</button>
+        </div>
+        <datalist id="pnList"></datalist>
+      </div>
+      <div id="partInfo" class="hint"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Наименование на шести языках</legend>
+      <div class="row">
+        <label for="descEn">🇬🇧 Английский текст (из CSV или свой)</label>
+        <div class="inline">
+          <input id="descEn" placeholder="OIL FILTER" spellcheck="false">
+          <button id="retranslate" class="btn">Перевести</button>
+        </div>
+      </div>
+      <div id="langRows"></div>
+      <div id="trStatus" class="hint"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Постоянные поля</legend>
+      <div class="row two">
+        <div>
+          <label for="madeIn">Made in</label>
+          <input id="madeIn" list="countries" spellcheck="false">
+          <datalist id="countries">
+            <option value="Türkiye"><option value="ITALY"><option value="FRANCE">
+            <option value="GERMANY"><option value="BRAZIL"><option value="U.S.A.">
+            <option value="INDIA"><option value="CHINA"><option value="POLAND">
+            <option value="SPAIN"><option value="MEXICO">
+          </datalist>
+        </div>
+        <div>
+          <label for="pcs">PCS</label>
+          <input id="pcs" inputmode="numeric">
+        </div>
+      </div>
+      <div class="row">
+        <label for="barcode">Штрихкод (Code 128)</label>
+        <div class="inline">
+          <input id="barcode" spellcheck="false">
+          <label class="check"><input type="checkbox" id="bcSame" checked> как номер детали</label>
+        </div>
+        <div id="bcStatus" class="hint"></div>
+      </div>
+      <button id="saveDefaults" class="btn ghost">Запомнить как значения по умолчанию</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Печать</legend>
+      <div class="row two">
+        <div>
+          <label for="printer">Принтер</label>
+          <select id="printer"></select>
+        </div>
+        <div>
+          <label for="copies">Копий</label>
+          <input id="copies" type="number" min="1" max="999" value="1">
+        </div>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="rotate180">
+          перевернуть на 180° при печати
+        </label>
+        <div class="hint">
+          Макет портретный (72×100мм), рулон в принтере — 100×72мм, поэтому
+          картинка перед печатью поворачивается на 90°. Направление поворота
+          не проверено физически — если первая этикетка ляжет текстом не в ту
+          сторону, включите этот чекбокс и напечатайте ещё раз.
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="print" class="btn primary">Печать на TSC</button>
+        <button id="printBrowser" class="btn">Печать через браузер</button>
+        <button id="savePng" class="btn ghost">Скачать PNG</button>
+        <button id="saveTspl" class="btn ghost">Сохранить TSPL</button>
+      </div>
+      <div id="printStatus" class="hint"></div>
+    </fieldset>
+  </section>
+
+  <!-- ------------------------------------------------------ правая колонка -->
+  <section class="panel preview-panel">
+    <div class="preview-tools">
+      <label class="check"><input type="checkbox" id="exact"> точное превью печати (203 dpi)</label>
+      <span class="spacer"></span>
+      <label for="zoom">масштаб</label>
+      <input id="zoom" type="range" min="2" max="9" step="0.25" value="5">
+    </div>
+
+    <div class="stage">
+      <div id="labelWrap">
+        <!-- Разметка — прямая копия структуры Label 100x72.dc.html -->
+        <section id="label" class="page">
+
+          <div class="hdr">
+            <div class="logo-box" id="logoCnh"><img src="/logos/logo1.png" alt="CNH Genuine Parts"></div>
+            <div class="logo-box" id="logoEye"><img src="/logos/logo2.png" alt=""></div>
+            <div class="logo-box" id="logoFsc"><img src="/logos/logo3.png" alt="FSC"></div>
+          </div>
+
+          <div id="descBox" class="desc"></div>
+
+          <div id="madeInEl" class="made-in"></div>
+
+          <div class="bc-row">
+            <svg id="bcSvg" class="barcode" preserveAspectRatio="none"></svg>
+          </div>
+
+          <div id="pnEl" class="pn"></div>
+
+          <div class="pcs-row">
+            <span>PCS</span>
+            <span id="pcsVal" class="pcs-val"></span>
+          </div>
+
+        </section>
+        <img id="exactImg" class="exact hidden" alt="точное превью печати">
+      </div>
+    </div>
+    <div class="hint legend">Превью в масштабе 1:1 по миллиметрам. Слева — макет как в Claude Design (72×100мм, портрет). «Точное превью печати» — та же картинка, повёрнутая на 90° под рулон принтера (100×72мм), именно так уходит на TSC. Пунктир — край этикетки, на печати его нет.</div>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+/* Оформление приложения вокруг этикетки. Геометрия самой этикетки
+   (класс .page и всё внутри) — прямая копия inline-стилей из
+   Label 100x72.dc.html (см. label_app/layout.py — общий источник чисел
+   для этого файла и для серверного PNG/TSPL-рендера). */
+
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --line: #d8dbe0;
+  --text: #1d2129;
+  --muted: #6b7280;
+  --accent: #b8202e;          /* фирменный красный CNH */
+  --accent-dark: #8f1822;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 5;
+}
+.title { font-weight: 700; font-size: 15px; }
+.status { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 460px) 1fr;
+  gap: 18px;
+  padding: 18px;
+  align-items: start;
+}
+@media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px 18px;
+}
+
+fieldset {
+  border: 0; border-top: 1px solid var(--line);
+  margin: 0 0 14px; padding: 12px 0 0;
+}
+fieldset:first-of-type { border-top: 0; padding-top: 0; }
+legend { font-weight: 600; font-size: 12px; color: var(--muted);
+         text-transform: uppercase; letter-spacing: .06em; padding: 0; }
+
+.row { margin-bottom: 10px; }
+.row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 3px; }
+.inline { display: flex; gap: 8px; align-items: center; }
+.inline input { flex: 1 1 auto; min-width: 0; }
+
+input[type=text], input:not([type]), input[type=number], select {
+  width: 100%; padding: 7px 9px;
+  border: 1px solid var(--line); border-radius: 6px;
+  font: inherit; background: #fff;
+}
+input:focus, select:focus { outline: 2px solid #c9d4e6; border-color: #9fb3d1; }
+
+.check { display: flex; align-items: center; gap: 6px;
+         color: var(--text); font-size: 13px; margin: 0 0 4px; }
+.check input { width: auto; }
+
+.btn {
+  padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px;
+  background: #fbfbfc; font: inherit; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: #f0f1f4; }
+.btn.primary { background: var(--accent); border-color: var(--accent-dark); color: #fff; }
+.btn.primary:hover { background: var(--accent-dark); }
+.btn.ghost { background: transparent; color: var(--muted); }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+
+.hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.hint.err { color: var(--accent); }
+.hidden { display: none !important; }
+
+.notice {
+  background: #fff6e5; border: 1px solid #f0d9a8;
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px;
+}
+.notice progress { width: 100%; margin: 8px 0; }
+
+/* --- строки языков ------------------------------------------------------ */
+.lang-row { display: grid; grid-template-columns: 26px 1fr; gap: 8px;
+            align-items: center; margin-bottom: 6px; }
+.lang-row .flag { font-size: 16px; text-align: center; }
+.lang-row input { font-family: Arial, Helvetica, sans-serif; }
+.lang-row.pending input { background: #fafafa; color: var(--muted); }
+.lang-row.failed input { border-color: #e6a6ab; }
+
+/* --- превью ------------------------------------------------------------- */
+.preview-panel { position: sticky; top: 66px; }
+.preview-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.preview-tools .spacer { flex: 1; }
+.preview-tools input[type=range] { width: 160px; }
+
+.stage { overflow: auto; padding: 8px; background: #e9ebef; border-radius: 8px; }
+#labelWrap { transform-origin: top left; width: 72mm; height: 100mm; }
+#labelWrap.landscape { width: 100mm; height: 72mm; }   /* точное превью печати — повёрнуто */
+
+/* =========================================================================
+   Этикетка — 1:1 копия Label 100x72.dc.html (<section class="page">).
+   ========================================================================= */
+.page {
+  box-sizing: border-box;
+  width: 72mm; min-height: 100mm;
+  padding: 4mm;
+  background: #fff; color: #000;
+  font-family: Helvetica, Arial, sans-serif;
+  display: flex; flex-direction: column; gap: 3mm;
+  border: 1px dashed #c3c7cf;                    /* только для превью, не печатается */
+  position: relative;
+}
+/* height:100mm (жёсткая, не min-height) на flex-колонке заставляла бы все
+   строки сжиматься (flex-shrink:1 по умолчанию), когда реальный контент
+   (6 строк наименования + сделанные браузером отступы) чуть выше 100мм —
+   именно так у PCS схлопывалась высота почти до нуля и строка становилась
+   не видна. min-height + flex-shrink:0 у детей ниже вместо этого просто
+   продолжает страницу за номинальную границу на доли миллиметра, без
+   искажений. Физический PNG/TSPL-рендер (render.py) — не браузер, там
+   такого сжатия нет и жёсткая граница 100мм всегда соблюдается ровно. */
+.page > * { flex-shrink: 0; }
+.exact {
+  /* Повёрнуто на 90° относительно макета — так же, как уходит на печать
+     (см. render.render_for_print): физический рулон 100x72, а не 72x100. */
+  width: 100mm; height: 72mm; object-fit: contain;
+  border: 1px dashed #c3c7cf;
+}
+
+.hdr { display: flex; align-items: flex-start; justify-content: space-between; gap: 2mm; }
+
+/* Контейнер с overflow:hidden + картинка, отмасштабированная и сдвинутая —
+   тот же приём "cover + crop", что в исходном макете. Числа —
+   те же offset/scale, что в label_app/layout.py (LOGOS). */
+.logo-box { position: relative; overflow: hidden; flex: 0 0 auto; }
+.logo-box img { position: absolute; }
+
+#logoCnh { width: 26mm; height: 13.3mm; }
+#logoCnh img { left: -3.49mm; top: -9.51mm; width: 32.5mm; height: 32.5mm; }
+
+#logoEye { width: 7mm; height: 4.9mm; margin-top: 4mm; }
+#logoEye img { left: -0.92mm; top: -0.11mm; width: 8.87mm; height: 5.02mm; }
+
+#logoFsc { width: 15mm; height: 17.7mm; }
+#logoFsc img { left: -12.6mm; top: -2.95mm; width: 40.2mm; height: 28.1mm; }
+
+.desc { display: flex; flex-direction: column; gap: 0.8mm; margin-top: 1mm; }
+.desc-line { font-size: 3.8mm; font-weight: 700; letter-spacing: 0.1mm; line-height: 1.2; }
+
+.made-in { font-size: 2.9mm; letter-spacing: 0.05mm; }
+
+.bc-row { display: flex; align-items: flex-end; height: 73px; }
+.barcode { display: block; width: 100%; height: 58px; }   /* BARCODE_ROW.bar_height_px в layout.py */
+
+.pn {
+  text-align: center; font-size: 6.5mm; font-weight: 700;
+  letter-spacing: 1.4mm; line-height: 1;
+  font-family: ui-monospace, Menlo, "SF Mono", monospace;
+}
+
+.pcs-row {
+  display: flex; align-items: baseline; gap: 3mm;
+  font-size: 3mm; letter-spacing: 0.2mm; margin-top: auto;
+}
+.pcs-val { font-weight: 700; }
+
+/* --- печать через браузер: только сама этикетка ------------------------- */
+@page { size: 72mm 100mm; margin: 0; }
+@media print {
+  body > *:not(.grid), .panel:not(.preview-panel),
+  .preview-tools, .legend, .exact { display: none !important; }
+  .grid { display: block; padding: 0; }
+  .preview-panel { border: 0; padding: 0; position: static; }
+  .stage { overflow: visible; padding: 0; background: none; }
+  #labelWrap { transform: none !important; }
+  .page { border: 0; }
+}
