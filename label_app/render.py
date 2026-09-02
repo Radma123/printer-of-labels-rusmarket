@@ -13,7 +13,7 @@
 import glob
 import os
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 import barcode as bc
 from layout import (BARCODE_ROW, CONTENT_W_MM, DENSITY, DESC, DPI, GAP_MM,
@@ -141,15 +141,16 @@ class Canvas:
         self.dr.rectangle([self.px(x_mm), self.px(y_mm),
                            self.px(x_mm + w_mm), self.px(y_mm + h_mm)], fill=0)
 
-    def paste_crop(self, path, box_x_mm, box_y_mm, spec, scale=1.0,
+    def paste_crop(self, path, box_x_mm, box_y_mm, spec, scale_x=1.0, scale_y=1.0,
                    work_px_per_mm=20.0):
         """Логотип из макета: картинка отображена в spec['disp'] мм, из неё
         вырезано окно spec['off']..+box размером spec['box'] (те же
         offset/scale, что задаёт inline-style в исходном .dc.html).
 
-        `scale` — ручная правка размера из панели макета: окно кропа в
-        исходной картинке от неё не зависит, меняется только размер, в
-        который готовый кроп кладётся на этикетку."""
+        `scale_x`/`scale_y` — ручная правка размера из панели макета: окно
+        кропа в исходной картинке от них не зависит, меняется только
+        размер, в который готовый кроп кладётся на этикетку, поэтому
+        логотип можно ужать отдельно по ширине и отдельно по высоте."""
         if not os.path.exists(path):
             return False
         src = Image.open(path).convert("RGBA")
@@ -163,8 +164,8 @@ class Canvas:
         bw = int(round(spec["box"]["w"] * work_px_per_mm))
         bh = int(round(spec["box"]["h"] * work_px_per_mm))
         cropped = resized.crop((ox, oy, ox + bw, oy + bh))
-        target_w = self.px(spec["box"]["w"] * scale)
-        target_h = self.px(spec["box"]["h"] * scale)
+        target_w = self.px(spec["box"]["w"] * scale_x)
+        target_h = self.px(spec["box"]["h"] * scale_y)
         cropped = cropped.resize((max(1, target_w), max(1, target_h)), Image.LANCZOS)
         cropped = cropped.point(lambda v: 255 if v > 200 else 0).convert("1")
         self.img.paste(cropped, (self.px(box_x_mm), self.px(box_y_mm)))
@@ -176,7 +177,7 @@ def _logo_path(name):
 
 
 def _tweak(data: dict, key: str):
-    """Ручная правка блока: (dx, dy, scale). См. layout.default_tweaks."""
+    """Ручная правка блока: (dx, dy, sx, sy). См. layout.default_tweaks."""
     raw = ((data.get("tweaks") or {}).get(key)) or {}
 
     def num(name, default):
@@ -185,72 +186,136 @@ def _tweak(data: dict, key: str):
         except (TypeError, ValueError):
             return default
 
-    scale = min(TWEAK_SCALE_MAX, max(TWEAK_SCALE_MIN, num("scale", 1.0)))
-    return num("dx", 0.0), num("dy", 0.0), scale
+    def clamp(v):
+        return min(TWEAK_SCALE_MAX, max(TWEAK_SCALE_MIN, v))
+
+    uniform = num("scale", 1.0)                  # старый формат правок
+    return num("dx", 0.0), num("dy", 0.0), clamp(num("sx", uniform)), clamp(num("sy", uniform))
 
 
-def _box(key, x, y, w, h):
+def _box(key, x, y, w, h, gw, gh, anchor="left"):
     """Рамка блока в системе координат макета (мм, 72x100, портрет).
     Уезжает на фронтенд, чтобы поверх картинки-превью можно было положить
-    невидимые прямоугольники и таскать их мышью."""
+    невидимые прямоугольники и таскать их мышью.
+
+    `anchor` — вокруг чего блок растёт по ширине: левого края или центра.
+    `gw`/`gh` — на сколько миллиметров блок растёт при увеличении sx/sy на
+    единицу. Обычно это просто его размер при масштабе 1, но, например, у
+    штрихкода ряд выше самих полос, и без этой поправки ручка изменения
+    высоты уезжала бы от курсора."""
     return {"key": key, "x": round(x, 3), "y": round(y, 3),
-            "w": round(max(w, 0.0), 3), "h": round(max(h, 0.0), 3)}
+            "w": round(max(w, 0.0), 3), "h": round(max(h, 0.0), 3),
+            "gw": round(max(gw, 0.0), 3), "gh": round(max(gh, 0.0), 3),
+            "anchor": anchor}
+
+
+def _squeeze(cv: Canvas, painter, k: float, anchor_mm: float):
+    """Рисует блок через painter и сжимает его по горизонтали в k раз.
+
+    Нужно только для текста: у логотипов и штрихкода ширина задаётся
+    числом и меняется без пересэмплинга, а глифы шрифта Pillow рисует
+    только пропорционально. Поэтому текст рисуется на отдельном холсте в
+    натуральную величину (кегль уже с учётом вертикального масштаба),
+    а потом переносится на этикетку сжатым по ширине относительно
+    `anchor_mm` — левого края блока или его центра.
+
+    Переносится по маске, только чёрными пикселями: если пользователь
+    надвинул блоки друг на друга, нижний не затирается белым фоном."""
+    if abs(k - 1.0) < 1e-3:
+        painter(cv)
+        return
+
+    tmp = Canvas(cv.scale)
+    painter(tmp)
+    ink = ImageChops.invert(tmp.img.convert("L"))
+    bbox = ink.getbbox()
+    if not bbox:                                  # пустой блок — нечего сжимать
+        return
+
+    x0, y0, x1, y1 = bbox
+    piece = tmp.img.crop(bbox).convert("L")
+    new_w = max(1, int(round((x1 - x0) * k)))
+    piece = piece.resize((new_w, y1 - y0), Image.LANCZOS)
+    piece = piece.point(lambda v: 255 if v > 160 else 0).convert("1")
+
+    anchor_px = cv.px(anchor_mm)
+    new_x = int(round(anchor_px + (x0 - anchor_px) * k))
+    mask = ImageChops.invert(piece.convert("L")).convert("1")
+    cv.img.paste(0, (new_x, y0), mask)
+
+
+def _logo_path(name):
+    return os.path.join(LOGO_DIR, LOGOS[name]["file"])
 
 
 def draw_header(cv: Canvas, top_mm, tw):
     """Три логотипа в ряд: justify-content:space-between, align-items:flex-start."""
-    dx, dy, s = tw
-    widths = [LOGOS[k]["box"]["w"] * s for k in HEADER_ORDER]
+    dx, dy, sx, sy = tw
+    widths = [LOGOS[k]["box"]["w"] * sx for k in HEADER_ORDER]
     # Ряд всегда во всю рабочую ширину: масштаб меняет размер самих
     # логотипов, а не разгон ряда, иначе при увеличении крайний логотип
     # уезжал бы за край этикетки.
     row_w = CONTENT_W_MM
     free = row_w - sum(widths)
     n_gaps = len(HEADER_ORDER) - 1
-    gap = HEADER_GAP_MM * s + max(0.0, free - HEADER_GAP_MM * s * n_gaps) / n_gaps
+    gap = HEADER_GAP_MM + max(0.0, free - HEADER_GAP_MM * n_gaps) / n_gaps
 
     x = PAD_MM + dx
     row_top = top_mm + dy
     max_h = 0.0
     for i, key in enumerate(HEADER_ORDER):
         spec = LOGOS[key]
-        y = row_top + spec.get("margin_top", 0.0) * s
-        cv.paste_crop(_logo_path(key), x, y, spec, scale=s)
-        max_h = max(max_h, y + spec["box"]["h"] * s - row_top)
-        x += spec["box"]["w"] * s + (gap if i < n_gaps else 0)
-    return _box("header", PAD_MM + dx, row_top, row_w, max_h), top_mm + max_h
+        y = row_top + spec.get("margin_top", 0.0) * sy
+        cv.paste_crop(_logo_path(key), x, y, spec, scale_x=sx, scale_y=sy)
+        max_h = max(max_h, y + spec["box"]["h"] * sy - row_top)
+        x += spec["box"]["w"] * sx + (gap if i < n_gaps else 0)
+    # Ряд всегда шириной во всю рабочую область, поэтому чувствительность
+    # ручки ширины считаем по суммарной ширине самих логотипов.
+    return (_box("header", PAD_MM + dx, row_top, row_w, max_h,
+                 sum(widths) / sx, max_h / sy),
+            top_mm + max_h)
 
 
 def draw_desc(cv: Canvas, lines, top_mm, tw):
     """6 строк наименования (EN + 5 языков), letter-spacing 0.1мм, bold."""
-    dx, dy, s = tw
+    dx, dy, sx, sy = tw
     shown = [ln for ln in lines[:DESC["max_lines"]] if ln]
-    size_mm = DESC["size"] * s
-    spacing = DESC["letter_spacing"] * s
+    size_mm = DESC["size"] * sy
+    spacing = DESC["letter_spacing"] * sy
     line_h = size_mm * DESC["line_height"]
-    gap = DESC["gap"] * s
-    flow_top = top_mm + DESC["margin_top"] * s
-    y = flow_top + dy
-    box_top = y
-    for line in shown:
-        size = cv.fit_size(line, size_mm, CONTENT_W_MM, bold=True,
-                           letter_spacing_mm=spacing)
-        cv.text(PAD_MM + dx, y, line, size, bold=True, letter_spacing_mm=spacing)
-        y += line_h + gap
+    gap = DESC["gap"] * sy
+    flow_top = top_mm + DESC["margin_top"] * sy
+    top = flow_top + dy
+    left = PAD_MM + dx
+
+    def painter(c):
+        y = top
+        for line in shown:
+            size = c.fit_size(line, size_mm, CONTENT_W_MM, bold=True,
+                              letter_spacing_mm=spacing)
+            c.text(left, y, line, size, bold=True, letter_spacing_mm=spacing)
+            y += line_h + gap
+
+    _squeeze(cv, painter, sx / sy, left)
     height = (len(shown) * line_h + max(0, len(shown) - 1) * gap) if shown else 0.0
-    return (_box("desc", PAD_MM + dx, box_top, CONTENT_W_MM, height),
+    return (_box("desc", left, top, CONTENT_W_MM * sx, height,
+                 CONTENT_W_MM, height / sy),
             flow_top + height)
 
 
 def draw_made_in(cv: Canvas, made_in, top_mm, tw):
-    dx, dy, s = tw
-    size_mm = MADE_IN["size"] * s
+    dx, dy, sx, sy = tw
+    size_mm = MADE_IN["size"] * sy
+    spacing = MADE_IN["letter_spacing"] * sy
     text = f"Made in {made_in}".strip()
-    cv.text(PAD_MM + dx, top_mm + dy, text, size_mm,
-            letter_spacing_mm=MADE_IN["letter_spacing"] * s)
+    left, top = PAD_MM + dx, top_mm + dy
+
+    _squeeze(cv, lambda c: c.text(left, top, text, size_mm, letter_spacing_mm=spacing),
+             sx / sy, left)
     height = size_mm * MADE_IN["line_height"]
-    width = cv.tracked_width(text, size_mm, MADE_IN["letter_spacing"] * s, bold=False)
-    return (_box("made_in", PAD_MM + dx, top_mm + dy, max(width, 8.0), height),
+    width = cv.tracked_width(text, size_mm, spacing, bold=False) * (sx / sy)
+    return (_box("made_in", left, top, max(width, 8.0), height,
+                 width / sx, height / sy),
             top_mm + height)
 
 
@@ -262,10 +327,10 @@ def draw_barcode(cv: Canvas, code, top_mm, tw):
     По ширине бары занимают BARCODE_ROW['width_frac'] (по умолчанию 70%)
     рабочей ширины и стоят по центру: во всю ширину, как было в макете,
     сканеру не остаётся «тихой зоны» по краям."""
-    dx, dy, s = tw
-    row_h_mm = BARCODE_ROW["height_px"] / PX_PER_MM * s
-    bar_h_mm = BARCODE_ROW["bar_height_px"] / PX_PER_MM * s
-    bars_w_mm = CONTENT_W_MM * BARCODE_ROW["width_frac"] * s
+    dx, dy, sx, sy = tw
+    row_h_mm = BARCODE_ROW["height_px"] / PX_PER_MM * sy
+    bar_h_mm = BARCODE_ROW["bar_height_px"] / PX_PER_MM * sy
+    bars_w_mm = CONTENT_W_MM * BARCODE_ROW["width_frac"] * sx
     left = PAD_MM + (CONTENT_W_MM - bars_w_mm) / 2 + dx
     bar_top = top_mm + dy + row_h_mm - bar_h_mm
 
@@ -286,22 +351,26 @@ def draw_barcode(cv: Canvas, code, top_mm, tw):
                 cv.fill(x, bar_top, module * width, bar_h_mm)
             x += module * width
             dark = not dark
-    return (_box("barcode", left, bar_top, bars_w_mm, bar_h_mm),
+    return (_box("barcode", left, bar_top, bars_w_mm, bar_h_mm,
+                 bars_w_mm / sx, row_h_mm / sy, anchor="center"),
             top_mm + row_h_mm)
 
 
 def draw_pn(cv: Canvas, pn, top_mm, tw):
-    dx, dy, s = tw
-    size_mm = PN["size"] * s
-    spacing = PN["letter_spacing"] * s
+    dx, dy, sx, sy = tw
+    size_mm = PN["size"] * sy
+    spacing = PN["letter_spacing"] * sy
     size = cv.fit_size(pn, size_mm, CONTENT_W_MM, bold=True, mono=True,
                        letter_spacing_mm=spacing)
-    y = top_mm + dy
-    cv.text(LABEL_W_MM / 2 + dx, y, pn, size, bold=True, mono=True,
-            letter_spacing_mm=spacing, anchor="ma")
-    width = cv.tracked_width(pn, size, spacing, bold=True, mono=True)
+    center, top = LABEL_W_MM / 2 + dx, top_mm + dy
+
+    _squeeze(cv, lambda c: c.text(center, top, pn, size, bold=True, mono=True,
+                                  letter_spacing_mm=spacing, anchor="ma"),
+             sx / sy, center)
+    width = cv.tracked_width(pn, size, spacing, bold=True, mono=True) * (sx / sy)
     height = size_mm * PN["line_height"]
-    return (_box("pn", LABEL_W_MM / 2 + dx - width / 2, y, max(width, 8.0), height),
+    return (_box("pn", center - width / 2, top, max(width, 8.0), height,
+                 width / sx, height / sy, anchor="center"),
             top_mm + height)
 
 
@@ -317,19 +386,26 @@ def draw_pcs(cv: Canvas, pcs, min_top_mm, tw):
     чуть выше эталонного Helvetica в браузере, поэтому здесь дополнительно
     ограничиваем сверху, чтобы строка PCS гарантированно не обрезалась
     краем этикетки, лишь слегка ужимая последний отступ вместо обрезания."""
-    dx, dy, s = tw
-    size_mm = PCS["size"] * s
-    spacing = PCS["letter_spacing"] * s
+    dx, dy, sx, sy = tw
+    size_mm = PCS["size"] * sy
+    spacing = PCS["letter_spacing"] * sy
+    gap = PCS["gap"] * sy
     height = size_mm * PCS["line_height"]
     flush_y = LABEL_H_MM - PAD_MM - height
     hard_cap = LABEL_H_MM - height - 0.3
-    y = min(max(min_top_mm, flush_y), hard_cap) + dy
-    x = PAD_MM + dx
-    cv.text(x, y, "PCS", size_mm, letter_spacing_mm=spacing)
-    w = cv.tracked_width("PCS", size_mm, spacing, bold=False) + PCS["gap"] * s
-    cv.text(x + w, y, str(pcs), size_mm, bold=True, letter_spacing_mm=spacing)
-    total_w = w + cv.tracked_width(str(pcs), size_mm, spacing, bold=True)
-    return _box("pcs", x, y, max(total_w, 8.0), height)
+    top = min(max(min_top_mm, flush_y), hard_cap) + dy
+    left = PAD_MM + dx
+    label_w = cv.tracked_width("PCS", size_mm, spacing, bold=False) + gap
+
+    def painter(c):
+        c.text(left, top, "PCS", size_mm, letter_spacing_mm=spacing)
+        c.text(left + label_w, top, str(pcs), size_mm, bold=True,
+               letter_spacing_mm=spacing)
+
+    _squeeze(cv, painter, sx / sy, left)
+    total_w = (label_w + cv.tracked_width(str(pcs), size_mm, spacing, bold=True)) * (sx / sy)
+    return _box("pcs", left, top, max(total_w, 8.0), height,
+                total_w / sx, height / sy)
 
 
 def draw_label(cv: Canvas, data: dict):

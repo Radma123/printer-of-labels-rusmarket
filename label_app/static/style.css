@@ -144,14 +144,26 @@ input:focus, select:focus { outline: 2px solid #c9d4e6; border-color: #9fb3d1; }
 .hit.sel { border-color: var(--accent); background: rgba(184, 32, 46, .10); }
 .hit.drag { border-style: dashed; }
 
+/* Ручки размера: правая тянет ширину, нижняя — высоту, угловая — обе.
+   Размер задан в мм, чтобы ручка не менялась при зуме превью. */
+.hit .h { position: absolute; display: none;
+          width: 1.8mm; height: 1.8mm;
+          background: #fff; border: 1px solid var(--accent); border-radius: 1px; }
+.hit.sel .h { display: block; }
+.hit .h.e  { right: 0; top: 50%; transform: translate(50%, -50%); cursor: ew-resize; }
+.hit .h.s  { left: 50%; bottom: 0; transform: translate(-50%, 50%); cursor: ns-resize; }
+.hit .h.se { right: 0; bottom: 0; transform: translate(50%, 50%); cursor: nwse-resize; }
+
 /* --- панель правки макета ----------------------------------------------- */
 .tweaks { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .tweaks-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .tweaks-head .spacer { flex: 1; }
 .tweak-row {
-  display: grid; grid-template-columns: 116px 1fr 46px 92px 26px;
-  gap: 8px; align-items: center; margin-bottom: 4px; font-size: 12.5px;
+  display: grid;
+  grid-template-columns: 108px 14px 1fr 44px 14px 1fr 44px 86px 22px;
+  gap: 6px; align-items: center; margin-bottom: 4px; font-size: 12.5px;
 }
+.tweak-row .ax { color: var(--muted); font-size: 11px; text-align: center; }
 .tweak-row.sel { background: #fdf2f3; border-radius: 5px; }
 .tweak-row .name { color: var(--text); cursor: pointer; }
 .tweak-row input[type=range] { width: 100%; }

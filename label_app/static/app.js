@@ -357,6 +357,16 @@ function applyBoxes() {
     el.style.width = `${b.w}mm`;
     el.style.height = `${b.h}mm`;
     el.addEventListener("pointerdown", startDrag);
+    // Ручки: правая тянет ширину, нижняя — высоту, угловая — обе сразу.
+    // Видны только у выделенного блока (CSS), но лежат в разметке всегда,
+    // чтобы выделение не требовало пересборки рамок.
+    for (const axis of ["e", "s", "se"]) {
+      const h = document.createElement("i");
+      h.className = `h ${axis}`;
+      h.title = axis === "e" ? "ширина" : axis === "s" ? "высота" : "ширина и высота";
+      h.addEventListener("pointerdown", (e) => startResize(e, b.key, axis));
+      el.appendChild(h);
+    }
     overlay.appendChild(el);
   }
 }
@@ -367,8 +377,17 @@ function elementName(key) {
 }
 
 function tweakOf(key) {
-  if (!state.tweaks[key]) state.tweaks[key] = { dx: 0, dy: 0, scale: 1 };
+  if (!state.tweaks[key]) state.tweaks[key] = { dx: 0, dy: 0, sx: 1, sy: 1 };
   return state.tweaks[key];
+}
+
+// Экранный сдвиг мыши -> миллиметры макета: обратный поворот на тот же
+// угол, на который повёрнуто превью, и деление на текущий зум.
+function screenToDesign(sx, sy) {
+  const a = (state.angle * Math.PI) / 180;
+  const k = state.pxPerMm * zoomFactor();
+  return [(sx * Math.cos(a) + sy * Math.sin(a)) / k,
+          (-sx * Math.sin(a) + sy * Math.cos(a)) / k];
 }
 
 function startDrag(ev) {
@@ -381,21 +400,17 @@ function startDrag(ev) {
   const t = tweakOf(key);
   const startX = ev.clientX, startY = ev.clientY;
   const baseDx = t.dx, baseDy = t.dy;
-  const a = (state.angle * Math.PI) / 180;
-  const cos = Math.cos(a), sin = Math.sin(a);
-  const k = state.pxPerMm * zoomFactor();
 
   state.dragging = true;
   el.classList.add("drag");
   el.setPointerCapture(ev.pointerId);
 
   const move = (e) => {
-    const sx = e.clientX - startX, sy = e.clientY - startY;
-    // экранный сдвиг -> миллиметры макета: обратный поворот на тот же угол
-    t.dx = baseDx + (sx * cos + sy * sin) / k;
-    t.dy = baseDy + (-sx * sin + sy * cos) / k;
+    const [ddx, ddy] = screenToDesign(e.clientX - startX, e.clientY - startY);
+    t.dx = baseDx + ddx;
+    t.dy = baseDy + ddy;
     // мгновенная реакция рамки, картинка догонит следующим ответом сервера
-    el.style.transform = `translate(${t.dx - baseDx}mm, ${t.dy - baseDy}mm)`;
+    el.style.transform = `translate(${ddx}mm, ${ddy}mm)`;
     updateTweakRow(key);
     scheduleDragPreview();
   };
@@ -411,6 +426,65 @@ function startDrag(ev) {
   el.addEventListener("pointermove", move);
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
+}
+
+function startResize(ev, key, axis) {
+  if (!$("editMode").checked) return;
+  ev.preventDefault();
+  ev.stopPropagation();                       // это не перетаскивание блока
+  select(key);
+
+  const handle = ev.currentTarget;
+  const el = handle.parentElement;
+  const box = state.boxes.find((b) => b.key === key);
+  if (!box || box.w <= 0 || box.h <= 0) return;
+  // Блок с anchor:"center" (номер детали, штрихкод) растёт в обе стороны от
+  // центра, поэтому правый край уходит на половину прироста — иначе ручка
+  // отставала бы от мыши вдвое.
+  const grow = box.anchor === "center" ? 2 : 1;
+
+  // gw/gh — на сколько мм блок растёт при +1 к sx/sy (сервер считает это
+  // сам: у штрихкода, например, ряд выше самих полос).
+  const gw = box.gw || box.w, gh = box.gh || box.h;
+  const t = tweakOf(key);
+  const baseSx = t.sx, baseSy = t.sy;
+  const startX = ev.clientX, startY = ev.clientY;
+  const min = (state.layout && state.layout.scale_min) || 0.3;
+  const max = (state.layout && state.layout.scale_max) || 2.5;
+  const clamp = (v) => Math.min(max, Math.max(min, v));
+
+  state.dragging = true;
+  el.classList.add("drag");
+  handle.setPointerCapture(ev.pointerId);
+
+  const move = (e) => {
+    const [ddx, ddy] = screenToDesign(e.clientX - startX, e.clientY - startY);
+    if (axis.includes("e") && gw > 0) t.sx = clamp(baseSx + (ddx * grow) / gw);
+    if (axis.includes("s") && gh > 0) t.sy = clamp(baseSy + ddy / gh);
+    // Рамка тянется за курсором сразу; картинку сервер догонит следующим
+    // ответом. У шапки ширина рамки от sx не зависит (ряд всегда во всю
+    // рабочую ширину) — там рамку не трогаем, меняются только логотипы.
+    const w = gw * t.sx, h = gh * t.sy;
+    if (Math.abs(box.w - gw * baseSx) < 0.01) {
+      el.style.width = `${w}mm`;
+      if (box.anchor === "center") el.style.left = `${box.x - (w - box.w) / 2}mm`;
+    }
+    if (Math.abs(box.h - gh * baseSy) < 0.01) el.style.height = `${h}mm`;
+    updateTweakRow(key);
+    scheduleDragPreview();
+  };
+  const up = () => {
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", up);
+    handle.removeEventListener("pointercancel", up);
+    el.classList.remove("drag");
+    state.dragging = false;
+    saveTweaks();
+    loadPreview();
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", up);
+  handle.addEventListener("pointercancel", up);
 }
 
 function select(key) {
@@ -444,20 +518,28 @@ function buildTweakRows() {
     row.dataset.key = key;
     row.innerHTML = `
       <span class="name">${elementName(key)}</span>
-      <input type="range" class="sc" min="${min}" max="${max}" step="0.01" value="1">
-      <span class="val">×1.00</span>
+      <span class="ax">Ш</span>
+      <input type="range" class="sx" min="${min}" max="${max}" step="0.01" value="1"
+             title="ширина блока">
+      <span class="val vx">×1.00</span>
+      <span class="ax">В</span>
+      <input type="range" class="sy" min="${min}" max="${max}" step="0.01" value="1"
+             title="высота блока">
+      <span class="val vy">×1.00</span>
       <span class="off"></span>
       <button class="reset" title="вернуть блок на место">⟲</button>`;
-    row.querySelector(".sc").addEventListener("input", (e) => {
-      tweakOf(key).scale = parseFloat(e.target.value);
-      select(key);
-      updateTweakRow(key);
-      saveTweaks();
-      schedulePreview();
-    });
+    for (const axis of ["sx", "sy"]) {
+      row.querySelector("." + axis).addEventListener("input", (e) => {
+        tweakOf(key)[axis] = parseFloat(e.target.value);
+        select(key);
+        updateTweakRow(key);
+        saveTweaks();
+        schedulePreview();
+      });
+    }
     row.querySelector(".name").addEventListener("click", () => select(key));
     row.querySelector(".reset").addEventListener("click", () => {
-      state.tweaks[key] = { dx: 0, dy: 0, scale: 1 };
+      state.tweaks[key] = { dx: 0, dy: 0, sx: 1, sy: 1 };
       updateTweakRow(key);
       saveTweaks();
       schedulePreview();
@@ -471,11 +553,14 @@ function updateTweakRow(key) {
   const row = document.querySelector(`.tweak-row[data-key="${key}"]`);
   if (!row) return;
   const t = tweakOf(key);
-  row.querySelector(".sc").value = String(t.scale);
-  row.querySelector(".val").textContent = "×" + t.scale.toFixed(2);
+  row.querySelector(".sx").value = String(t.sx);
+  row.querySelector(".sy").value = String(t.sy);
+  row.querySelector(".vx").textContent = "×" + t.sx.toFixed(2);
+  row.querySelector(".vy").textContent = "×" + t.sy.toFixed(2);
   const moved = Math.abs(t.dx) > 0.005 || Math.abs(t.dy) > 0.005;
   row.querySelector(".off").textContent = moved ? `${mm(t.dx)} / ${mm(t.dy)} мм` : "";
-  row.classList.toggle("changed", moved || Math.abs(t.scale - 1) > 0.005);
+  row.classList.toggle("changed", moved
+    || Math.abs(t.sx - 1) > 0.005 || Math.abs(t.sy - 1) > 0.005);
 }
 
 function mm(v) {
@@ -493,10 +578,13 @@ function loadTweaks() {
   for (const key of Object.keys(fresh)) {
     const s = saved[key];
     if (!s) continue;
+    // Правки, сохранённые до появления раздельных осей, читаем как sx = sy.
+    const uniform = Number(s.scale) > 0 ? Number(s.scale) : 1;
     fresh[key] = {
       dx: Number(s.dx) || 0,
       dy: Number(s.dy) || 0,
-      scale: Number(s.scale) > 0 ? Number(s.scale) : 1,
+      sx: Number(s.sx) > 0 ? Number(s.sx) : uniform,
+      sy: Number(s.sy) > 0 ? Number(s.sy) : uniform,
     };
   }
   return fresh;
@@ -508,7 +596,7 @@ function saveTweaks() {
 
 function resetTweaks() {
   for (const key of Object.keys(state.tweaks))
-    state.tweaks[key] = { dx: 0, dy: 0, scale: 1 };
+    state.tweaks[key] = { dx: 0, dy: 0, sx: 1, sy: 1 };
   for (const key of Object.keys(state.tweaks)) updateTweakRow(key);
   saveTweaks();
   loadPreview();
