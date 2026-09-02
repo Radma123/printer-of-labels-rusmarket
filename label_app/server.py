@@ -14,7 +14,9 @@
 Слушает только 127.0.0.1 — наружу ничего не открывается.
 """
 
+import base64
 import http.server
+import io
 import json
 import os
 import socketserver
@@ -197,7 +199,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 img = render.render(data, scale=scale).convert("L")
             else:
                 img = render.render_for_print(data, scale=scale).convert("L")
-            import io
             buf = io.BytesIO()
             img.save(buf, "PNG")
             return self._send(200, buf.getvalue(), "image/png")
@@ -225,6 +226,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not _index_state["running"]:
                 build_index_async()
             return self.json({"started": True, "index": _index_state})
+
+        if url.path == "/api/preview":
+            # Картинка и рамки блоков — одним ответом: рамки считает тот же
+            # проход отрисовки, что и картинку, поэтому ручки перетаскивания
+            # на фронтенде всегда лежат ровно там, где нарисован блок.
+            data = body.get("label") or {}
+            scale = max(1, min(6, int(body.get("scale") or 3)))
+            try:
+                img, boxes = render.render_with_boxes(data, scale=scale)
+            except Exception as exc:                         # noqa: BLE001
+                # Иначе исключение уходит в трейсбек и браузер получает
+                # оборванный ответ — превью просто молча не появляется.
+                return self.fail(f"не удалось нарисовать этикетку: {exc}", 500)
+            buf = io.BytesIO()
+            img.convert("L").save(buf, "PNG")
+            return self.json({
+                "png": "data:image/png;base64,"
+                       + base64.b64encode(buf.getvalue()).decode("ascii"),
+                "boxes": boxes,
+                "design": {"w": layout_mod.LABEL_W_MM, "h": layout_mod.LABEL_H_MM},
+                # Угол (CSS, по часовой), под которым портретный макет
+                # ложится на рулон принтера: render_for_print крутит
+                # картинку на 90° ПРОТИВ часовой (PIL ROTATE_90), то есть
+                # на экране это те же -90° = 270°.
+                "print_angle": 90 if data.get("rotate180") else 270,
+            })
 
         if url.path == "/api/print":
             queue = (body.get("printer") or "").strip()

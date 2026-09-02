@@ -115,43 +115,52 @@
   <!-- ------------------------------------------------------ правая колонка -->
   <section class="panel preview-panel">
     <div class="preview-tools">
-      <label class="check"><input type="checkbox" id="exact"> точное превью печати (203 dpi)</label>
+      <div class="rot">
+        <button id="rotCcw" class="btn icon" title="повернуть на 90° против часовой">↺</button>
+        <button id="rotCw" class="btn icon" title="повернуть на 90° по часовой">↻</button>
+        <input id="angle" type="range" min="0" max="359" step="1" value="0"
+               title="свободный поворот превью">
+        <span id="angleVal" class="angle-val">0°</span>
+      </div>
+      <button id="angleRead" class="btn ghost small">как читать</button>
+      <button id="anglePrint" class="btn ghost small">как выйдет из принтера</button>
       <span class="spacer"></span>
       <label for="zoom">масштаб</label>
       <input id="zoom" type="range" min="2" max="9" step="0.25" value="5">
     </div>
 
+    <div id="previewErr" class="hint err hidden"></div>
+
     <div class="stage">
-      <div id="labelWrap">
-        <!-- Разметка — прямая копия структуры Label 100x72.dc.html -->
-        <section id="label" class="page">
-
-          <div class="hdr">
-            <div class="logo-box" id="logoCnh"><img src="/logos/logo1.png" alt="CNH Genuine Parts"></div>
-            <div class="logo-box" id="logoEye"><img src="/logos/logo2.png" alt=""></div>
-            <div class="logo-box" id="logoFsc"><img src="/logos/logo3.png" alt="FSC"></div>
-          </div>
-
-          <div id="descBox" class="desc"></div>
-
-          <div id="madeInEl" class="made-in"></div>
-
-          <div class="bc-row">
-            <svg id="bcSvg" class="barcode" preserveAspectRatio="none"></svg>
-          </div>
-
-          <div id="pnEl" class="pn"></div>
-
-          <div class="pcs-row">
-            <span>PCS</span>
-            <span id="pcsVal" class="pcs-val"></span>
-          </div>
-
-        </section>
-        <img id="exactImg" class="exact hidden" alt="точное превью печати">
+      <div id="viewport">
+        <div id="labelWrap">
+          <img id="exactImg" alt="точное превью печати">
+          <div id="overlay" class="overlay"></div>
+        </div>
       </div>
     </div>
-    <div class="hint legend">Превью в масштабе 1:1 по миллиметрам. Слева — макет как в Claude Design (72×100мм, портрет). «Точное превью печати» — та же картинка, повёрнутая на 90° под рулон принтера (100×72мм), именно так уходит на TSC. Пунктир — край этикетки, на печати его нет.</div>
+
+    <div class="tweaks">
+      <div class="tweaks-head">
+        <label class="check"><input type="checkbox" id="editMode" checked>
+          править макет мышью</label>
+        <span class="spacer"></span>
+        <button id="resetTweaks" class="btn ghost small">Сбросить макет</button>
+      </div>
+      <div id="tweakRows"></div>
+      <div class="hint">
+        Блок тянется мышью, стрелки на клавиатуре двигают выделенный блок на
+        0.5&nbsp;мм (с Shift — на 0.1&nbsp;мм). Ползунок рядом с названием
+        уменьшает или увеличивает сам блок. Всё это уходит и в печать.
+      </div>
+    </div>
+
+    <div class="hint legend">
+      Превью — та самая картинка 203&nbsp;dpi, которая уходит на принтер,
+      просто повёрнутая для удобного чтения: поворот кратен 90°, пиксели от
+      этого не меняются. «Как выйдет из принтера» показывает её в ориентации
+      рулона 100×72&nbsp;мм. Пунктир — край этикетки, на печати его нет.
+    </div>
   </section>
 </main>
 

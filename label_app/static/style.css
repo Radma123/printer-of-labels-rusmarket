@@ -1,7 +1,7 @@
-/* Оформление приложения вокруг этикетки. Геометрия самой этикетки
-   (класс .page и всё внутри) — прямая копия inline-стилей из
-   Label 100x72.dc.html (см. label_app/layout.py — общий источник чисел
-   для этого файла и для серверного PNG/TSPL-рендера). */
+/* Оформление приложения вокруг этикетки. Геометрию самой этикетки этот
+   файл больше не описывает: превью — готовая картинка от render.py
+   (единственный источник чисел — label_app/layout.py), здесь только
+   рамка, поворот, зум и рамки-манипуляторы поверх неё. */
 
 :root {
   --bg: #f4f5f7;
@@ -102,89 +102,78 @@ input:focus, select:focus { outline: 2px solid #c9d4e6; border-color: #9fb3d1; }
 .lang-row.failed input { border-color: #e6a6ab; }
 
 /* --- превью ------------------------------------------------------------- */
+/* Превью — картинка от render.py (сервер), а не отдельная вёрстка этикетки:
+   раньше здесь лежала копия макета на flexbox, и любая правка геометрии
+   требовала одинаковых изменений в двух местах. Теперь единственный
+   источник — render.py, а браузер только поворачивает готовую картинку
+   (поворот кратен 90° ничего не искажает) и кладёт поверх неё прозрачные
+   рамки-манипуляторы для перетаскивания блоков. */
 .preview-panel { position: sticky; top: 66px; }
-.preview-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.preview-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+                 flex-wrap: wrap; }
 .preview-tools .spacer { flex: 1; }
-.preview-tools input[type=range] { width: 160px; }
+.preview-tools input[type=range] { width: 150px; }
+.preview-tools .rot { display: flex; align-items: center; gap: 6px; }
+.preview-tools .rot input[type=range] { width: 110px; }
+.angle-val { font-variant-numeric: tabular-nums; color: var(--muted);
+             font-size: 12.5px; min-width: 34px; }
+.btn.icon { padding: 4px 9px; font-size: 15px; line-height: 1.1; }
+.btn.small { padding: 5px 9px; font-size: 12.5px; }
 
-.stage { overflow: auto; padding: 8px; background: #e9ebef; border-radius: 8px; }
-#labelWrap { transform-origin: top left; width: 72mm; height: 100mm; }
-#labelWrap.landscape { width: 100mm; height: 72mm; }   /* точное превью печати — повёрнуто */
-
-/* =========================================================================
-   Этикетка — 1:1 копия Label 100x72.dc.html (<section class="page">).
-   ========================================================================= */
-.page {
-  box-sizing: border-box;
-  width: 72mm; min-height: 100mm;
-  padding: 4mm;
-  background: #fff; color: #000;
-  font-family: Helvetica, Arial, sans-serif;
-  display: flex; flex-direction: column; gap: 3mm;
-  border: 1px dashed #c3c7cf;                    /* только для превью, не печатается */
-  position: relative;
+.stage { overflow: auto; padding: 12px; background: #e9ebef; border-radius: 8px;
+         display: flex; justify-content: center; }
+#viewport { position: relative; flex: 0 0 auto; }
+#labelWrap {
+  position: absolute; width: 72mm; height: 100mm;
+  transform-origin: 50% 50%;
+  background: #fff; border: 1px dashed #c3c7cf;   /* край этикетки, не печатается */
 }
-/* height:100mm (жёсткая, не min-height) на flex-колонке заставляла бы все
-   строки сжиматься (flex-shrink:1 по умолчанию), когда реальный контент
-   (6 строк наименования + сделанные браузером отступы) чуть выше 100мм —
-   именно так у PCS схлопывалась высота почти до нуля и строка становилась
-   не видна. min-height + flex-shrink:0 у детей ниже вместо этого просто
-   продолжает страницу за номинальную границу на доли миллиметра, без
-   искажений. Физический PNG/TSPL-рендер (render.py) — не браузер, там
-   такого сжатия нет и жёсткая граница 100мм всегда соблюдается ровно. */
-.page > * { flex-shrink: 0; }
-.exact {
-  /* Повёрнуто на 90° относительно макета — так же, как уходит на печать
-     (см. render.render_for_print): физический рулон 100x72, а не 72x100. */
-  width: 100mm; height: 72mm; object-fit: contain;
-  border: 1px dashed #c3c7cf;
+#exactImg { display: block; width: 100%; height: 100%; }
+
+/* --- рамки-манипуляторы ------------------------------------------------- */
+.overlay { position: absolute; inset: 0; }
+.overlay.off { display: none; }
+.hit {
+  /* box-sizing:border-box глобально, поэтому рамка рисуется внутри
+     размеров блока и ничего не смещает */
+  position: absolute; cursor: move; touch-action: none;
+  border: 1px solid transparent; border-radius: 2px;
 }
+.hit:hover { border-color: rgba(184, 32, 46, .45);
+             background: rgba(184, 32, 46, .06); }
+.hit.sel { border-color: var(--accent); background: rgba(184, 32, 46, .10); }
+.hit.drag { border-style: dashed; }
 
-.hdr { display: flex; align-items: flex-start; justify-content: space-between; gap: 2mm; }
-
-/* Контейнер с overflow:hidden + картинка, отмасштабированная и сдвинутая —
-   тот же приём "cover + crop", что в исходном макете. Числа —
-   те же offset/scale, что в label_app/layout.py (LOGOS). */
-.logo-box { position: relative; overflow: hidden; flex: 0 0 auto; }
-.logo-box img { position: absolute; }
-
-#logoCnh { width: 26mm; height: 13.3mm; }
-#logoCnh img { left: -3.49mm; top: -9.51mm; width: 32.5mm; height: 32.5mm; }
-
-#logoEye { width: 7mm; height: 4.9mm; margin-top: 4mm; }
-#logoEye img { left: -0.92mm; top: -0.11mm; width: 8.87mm; height: 5.02mm; }
-
-#logoFsc { width: 15mm; height: 17.7mm; }
-#logoFsc img { left: -12.6mm; top: -2.95mm; width: 40.2mm; height: 28.1mm; }
-
-.desc { display: flex; flex-direction: column; gap: 0.8mm; margin-top: 1mm; }
-.desc-line { font-size: 3.8mm; font-weight: 700; letter-spacing: 0.1mm; line-height: 1.2; }
-
-.made-in { font-size: 2.9mm; letter-spacing: 0.05mm; }
-
-.bc-row { display: flex; align-items: flex-end; height: 73px; }
-.barcode { display: block; width: 100%; height: 58px; }   /* BARCODE_ROW.bar_height_px в layout.py */
-
-.pn {
-  text-align: center; font-size: 6.5mm; font-weight: 700;
-  letter-spacing: 1.4mm; line-height: 1;
-  font-family: ui-monospace, Menlo, "SF Mono", monospace;
+/* --- панель правки макета ----------------------------------------------- */
+.tweaks { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.tweaks-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tweaks-head .spacer { flex: 1; }
+.tweak-row {
+  display: grid; grid-template-columns: 116px 1fr 46px 92px 26px;
+  gap: 8px; align-items: center; margin-bottom: 4px; font-size: 12.5px;
 }
+.tweak-row.sel { background: #fdf2f3; border-radius: 5px; }
+.tweak-row .name { color: var(--text); cursor: pointer; }
+.tweak-row input[type=range] { width: 100%; }
+.tweak-row .val, .tweak-row .off { color: var(--muted);
+                                   font-variant-numeric: tabular-nums; font-size: 12px; }
+.tweak-row .reset { border: 0; background: none; cursor: pointer;
+                    color: var(--muted); font-size: 14px; padding: 0; }
+.tweak-row .reset:hover { color: var(--accent); }
+.tweak-row.changed .name { font-weight: 600; }
 
-.pcs-row {
-  display: flex; align-items: baseline; gap: 3mm;
-  font-size: 3mm; letter-spacing: 0.2mm; margin-top: auto;
-}
-.pcs-val { font-weight: 700; }
+.legend { margin-top: 10px; }
 
-/* --- печать через браузер: только сама этикетка ------------------------- */
+/* --- печать через браузер: только сама картинка этикетки ---------------- */
 @page { size: 72mm 100mm; margin: 0; }
 @media print {
   body > *:not(.grid), .panel:not(.preview-panel),
-  .preview-tools, .legend, .exact { display: none !important; }
+  .preview-tools, .tweaks, .legend, .overlay { display: none !important; }
   .grid { display: block; padding: 0; }
   .preview-panel { border: 0; padding: 0; position: static; }
-  .stage { overflow: visible; padding: 0; background: none; }
-  #labelWrap { transform: none !important; }
-  .page { border: 0; }
+  .stage { overflow: visible; padding: 0; background: none; display: block; }
+  /* На бумагу — портретный макет 1:1, без экранного поворота и зума. */
+  #viewport { width: 72mm !important; height: 100mm !important; }
+  #labelWrap { position: static; transform: none !important;
+               width: 72mm; height: 100mm; border: 0; }
 }

@@ -75,7 +75,12 @@ DESC = {"size": 3.8, "weight": "bold", "letter_spacing": 0.1,
 
 MADE_IN = {"size": 2.9, "letter_spacing": 0.05, "line_height": 1.15}
 
-BARCODE_ROW = {"height_px": 73, "gap_px": 0.32 * PX_PER_MM, "bar_height_px": 58}
+# width_frac — доля рабочей ширины (CONTENT_W_MM), которую занимает штрихкод.
+# В исходном макете он был во всю ширину (1.0); по умолчанию сузили до 70%
+# и центрировали — так на реальных этикетках CNH и так остаётся поле по краям,
+# которое сканеру нужно как "тихая зона".
+BARCODE_ROW = {"height_px": 73, "gap_px": 0.32 * PX_PER_MM, "bar_height_px": 58,
+               "width_frac": 0.70}
 
 PN = {"size": 6.5, "weight": "bold", "letter_spacing": 1.4, "line_height": 1.0,
       "font": "monospace"}
@@ -87,6 +92,34 @@ DEFAULTS = {
     "pcs": "1",
     "rotate180": False,
 }
+
+# ------------------------------------------------------- ручные правки макета
+# Пользователь может подвинуть любой блок мышью и уменьшить/увеличить его
+# ползунком. Правки хранятся как {ключ: {dx, dy, scale}} и приезжают вместе с
+# данными этикетки (label["tweaks"]) — один и тот же словарь применяют и
+# превью, и PNG, и TSPL, поэтому напечатается ровно то, что видно на экране.
+#
+#   dx/dy — сдвиг блока в миллиметрах относительно его места в потоке;
+#           на положение остальных блоков НЕ влияет (иначе перетаскивание
+#           одного элемента дёргало бы всю этикетку);
+#   scale — множитель размера (кегль текста, размер логотипов, размеры
+#           штрихкода); на поток влияет, блоки ниже подвинутся сами.
+ELEMENTS = ("header", "desc", "made_in", "barcode", "pn", "pcs")
+ELEMENT_NAMES = {
+    "header": "Логотипы",
+    "desc": "Наименование",
+    "made_in": "Made in",
+    "barcode": "Штрихкод",
+    "pn": "Номер детали",
+    "pcs": "PCS",
+}
+TWEAK_SCALE_MIN = 0.30
+TWEAK_SCALE_MAX = 2.50
+
+
+def default_tweaks() -> dict:
+    return {key: {"dx": 0.0, "dy": 0.0, "scale": 1.0} for key in ELEMENTS}
+
 
 FONT_MONO_CANDIDATES = [
     "/System/Library/Fonts/Supplemental/Menlo.ttc",
@@ -101,9 +134,10 @@ def mm_to_dots(value_mm: float, dpi: int = DPI) -> int:
 
 
 def as_dict() -> dict:
-    """Геометрия для фронтенда — тот же набор чисел, что использует
-    render.py, чтобы DOM-превью (реальный flexbox в браузере) и
-    серверный PNG/TSPL совпадали."""
+    """Геометрия для фронтенда: те же числа, что использует render.py.
+    Превью в браузере — картинка от render.py, а не отдельная вёрстка,
+    поэтому эти числа нужны фронтенду только для рамок-манипуляторов
+    (перетаскивание блоков) и подписей в панели правки макета."""
     return {
         "label": {"w": LABEL_W_MM, "h": LABEL_H_MM},
         "pad": PAD_MM, "gap": GAP_MM, "content_w": CONTENT_W_MM,
@@ -113,4 +147,8 @@ def as_dict() -> dict:
         "desc": DESC, "made_in": MADE_IN, "barcode_row": BARCODE_ROW,
         "pn": PN, "pcs": PCS,
         "print": {"w": PRINT_W_MM, "h": PRINT_H_MM},
+        "elements": list(ELEMENTS),
+        "element_names": ELEMENT_NAMES,
+        "tweaks": default_tweaks(),
+        "scale_min": TWEAK_SCALE_MIN, "scale_max": TWEAK_SCALE_MAX,
     }
