@@ -22,10 +22,31 @@ def index_path(csv_path: str) -> str:
     return csv_path + ".pnidx"
 
 
+def index_is_valid(csv_path: str) -> bool:
+    """Первая запись индекса должна указывать ровно на начало своей строки.
+
+    Ловит индекс, собранный без учёта BOM (первые 3 байта файла): там все
+    смещения сдвинуты, поиск не падает, а молча возвращает соседний мусор.
+    Стоит один seek, поэтому проверяется при каждом обращении.
+    """
+    try:
+        with open(index_path(csv_path), "rb") as idx:
+            pn, _, off = idx.readline().partition(b"\t")
+        if not pn or not off.strip().isdigit():
+            return False
+        with open(csv_path, "rb") as fh:
+            fh.seek(int(off))
+            first = fh.readline().split(b";", 1)[0].strip().strip(b'"').upper()
+        return first == pn.upper()
+    except OSError:
+        return False
+
+
 def index_is_fresh(csv_path: str) -> bool:
     idx = index_path(csv_path)
     return (os.path.exists(idx) and os.path.getsize(idx) > 0
-            and os.path.getmtime(idx) >= os.path.getmtime(csv_path))
+            and os.path.getmtime(idx) >= os.path.getmtime(csv_path)
+            and index_is_valid(csv_path))
 
 
 def build_index(csv_path: str, progress=None) -> str:

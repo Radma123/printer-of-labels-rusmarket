@@ -25,7 +25,7 @@ TSPL (raw через CUPS), без стороннего софта.
 ## Быстрый старт
 
 ```
-cd ~/Downloads/printer-of-labels-rusmarket
+cd ~/Documents/printer-of-labels-rusmarket
 python3 tsc_label.py --check                              # проверить окружение
 python3 tsc_label.py --demo --printer TSC_TE200            # тестовая печать
 python3 tsc_label.py --pn C5NNF892A --printer TSC_TE200    # печать реальной детали

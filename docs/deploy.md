@@ -22,7 +22,7 @@
 (без README и .gitignore), затем:
 
 ```bash
-cd ~/Downloads/printer-of-labels-rusmarket
+cd ~/Documents/printer-of-labels-rusmarket
 git remote add origin git@github.com:ВАШ_ЛОГИН/printer-of-labels-rusmarket.git
 git push -u origin main
 ```
@@ -30,7 +30,7 @@ git push -u origin main
 Вариант Б — через GitHub CLI (`brew install gh`, затем `gh auth login`):
 
 ```bash
-cd ~/Downloads/printer-of-labels-rusmarket
+cd ~/Documents/printer-of-labels-rusmarket
 gh repo create printer-of-labels-rusmarket --private --source=. --remote=origin --push
 ```
 
