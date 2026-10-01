@@ -70,7 +70,10 @@ HEADER_GAP_MM = 2.0                       # gap:2mm; при space-between реа
 HEADER_ORDER = ("cnh", "eye", "fsc")
 
 # ------------------------------------------------------------------- строки
-DESC = {"size": 3.8, "weight": "bold", "letter_spacing": 0.1,
+# Шрифт — как на оригинальных этикетках CNH: гротеск Helvetica/Arial,
+# наименование и «Made in» обычной толщины, номер детали — жирный
+# (не моноширинный) с широкой разрядкой, «PCS 1» — обычный.
+DESC = {"size": 3.8, "weight": "regular", "letter_spacing": 0.0,
         "line_height": 1.2, "gap": 0.8, "margin_top": 1.0, "max_lines": 6}
 
 MADE_IN = {"size": 2.9, "letter_spacing": 0.05, "line_height": 1.15}
@@ -83,9 +86,10 @@ BARCODE_ROW = {"height_px": 73, "gap_px": 0.32 * PX_PER_MM, "bar_height_px": 58,
                "width_frac": 0.70}
 
 PN = {"size": 6.5, "weight": "bold", "letter_spacing": 1.4, "line_height": 1.0,
-      "font": "monospace"}
+      "font": "sans"}
 
-PCS = {"size": 3.0, "letter_spacing": 0.2, "gap": 3.0, "line_height": 1.15}
+PCS = {"size": 3.0, "letter_spacing": 0.2, "gap": 3.0, "line_height": 1.15,
+       "number_weight": "regular"}
 
 DEFAULTS = {
     "made_in": "Türkiye",

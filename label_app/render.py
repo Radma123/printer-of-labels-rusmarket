@@ -26,10 +26,12 @@ from layout import (BARCODE_ROW, CONTENT_W_MM, DENSITY, DESC, DPI, GAP_MM,
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOGO_DIR = os.path.join(HERE, "static", "logos")
 
+# (файл, индекс начертания в .ttc). Helvetica первой — ею набраны
+# оригинальные этикетки CNH; Arial — почти идентичная замена.
 FONT_CANDIDATES = [
+    (("/System/Library/Fonts/Helvetica.ttc", 0),
+     ("/System/Library/Fonts/Helvetica.ttc", 1)),
     ("/System/Library/Fonts/Supplemental/Arial.ttf",
-     "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
-    ("/System/Library/Fonts/Helvetica.ttc",
      "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
@@ -40,22 +42,28 @@ _fonts = None
 _mono = None
 
 
+def _face(spec):
+    """Кандидат шрифта — путь или (путь, индекс начертания в .ttc)."""
+    return spec if isinstance(spec, tuple) else (spec, 0)
+
+
 def _font_files():
     global _fonts
     if _fonts:
         return _fonts
     env = os.environ.get("LABEL_FONT")
     if env and os.path.exists(env):
-        _fonts = (env, os.environ.get("LABEL_FONT_BOLD", env))
+        _fonts = ((env, 0), (os.environ.get("LABEL_FONT_BOLD", env), 0))
         return _fonts
     for reg, bold in FONT_CANDIDATES:
-        if os.path.exists(reg):
-            _fonts = (reg, bold if os.path.exists(bold) else reg)
+        reg, bold = _face(reg), _face(bold)
+        if os.path.exists(reg[0]):
+            _fonts = (reg, bold if os.path.exists(bold[0]) else reg)
             return _fonts
     found = sorted(glob.glob("/System/Library/Fonts/Supplemental/*.ttf"))
     if not found:
         raise RuntimeError("не найден ни один TTF-шрифт, задайте LABEL_FONT")
-    _fonts = (found[0], found[0])
+    _fonts = ((found[0], 0), (found[0], 0))
     return _fonts
 
 
@@ -67,7 +75,7 @@ def _mono_file():
     candidates = ([env] if env else []) + FONT_MONO_CANDIDATES
     for path in candidates:
         if path and os.path.exists(path):
-            _mono = path
+            _mono = (path, 0)
             return _mono
     _mono = _font_files()[1]                             # жирный обычный — запасной вариант
     return _mono
@@ -89,11 +97,12 @@ class Canvas:
 
     def font(self, size_mm: float, bold: bool = False, mono: bool = False):
         if mono:
-            path = _mono_file()
+            path, index = _mono_file()
         else:
             reg, bld = _font_files()
-            path = bld if bold else reg
-        return ImageFont.truetype(path, max(5, int(round(size_mm * self.px_per_mm))))
+            path, index = bld if bold else reg
+        return ImageFont.truetype(path, max(5, int(round(size_mm * self.px_per_mm))),
+                                  index=index)
 
     def text(self, x_mm, y_mm, text, size_mm, bold=False, mono=False, anchor="la",
              letter_spacing_mm=0.0):
@@ -277,8 +286,9 @@ def draw_header(cv: Canvas, top_mm, tw):
 
 
 def draw_desc(cv: Canvas, lines, top_mm, tw):
-    """6 строк наименования (EN + 5 языков), letter-spacing 0.1мм, bold."""
+    """6 строк наименования (EN + 5 языков); толщина и разрядка — DESC."""
     dx, dy, sx, sy = tw
+    bold = DESC["weight"] == "bold"
     shown = [ln for ln in lines[:DESC["max_lines"]] if ln]
     size_mm = DESC["size"] * sy
     spacing = DESC["letter_spacing"] * sy
@@ -291,9 +301,9 @@ def draw_desc(cv: Canvas, lines, top_mm, tw):
     def painter(c):
         y = top
         for line in shown:
-            size = c.fit_size(line, size_mm, CONTENT_W_MM, bold=True,
+            size = c.fit_size(line, size_mm, CONTENT_W_MM, bold=bold,
                               letter_spacing_mm=spacing)
-            c.text(left, y, line, size, bold=True, letter_spacing_mm=spacing)
+            c.text(left, y, line, size, bold=bold, letter_spacing_mm=spacing)
             y += line_h + gap
 
     _squeeze(cv, painter, sx / sy, left)
@@ -360,14 +370,15 @@ def draw_pn(cv: Canvas, pn, top_mm, tw):
     dx, dy, sx, sy = tw
     size_mm = PN["size"] * sy
     spacing = PN["letter_spacing"] * sy
-    size = cv.fit_size(pn, size_mm, CONTENT_W_MM, bold=True, mono=True,
+    bold, mono = PN["weight"] == "bold", PN["font"] == "monospace"
+    size = cv.fit_size(pn, size_mm, CONTENT_W_MM, bold=bold, mono=mono,
                        letter_spacing_mm=spacing)
     center, top = LABEL_W_MM / 2 + dx, top_mm + dy
 
-    _squeeze(cv, lambda c: c.text(center, top, pn, size, bold=True, mono=True,
+    _squeeze(cv, lambda c: c.text(center, top, pn, size, bold=bold, mono=mono,
                                   letter_spacing_mm=spacing, anchor="ma"),
              sx / sy, center)
-    width = cv.tracked_width(pn, size, spacing, bold=True, mono=True) * (sx / sy)
+    width = cv.tracked_width(pn, size, spacing, bold=bold, mono=mono) * (sx / sy)
     height = size_mm * PN["line_height"]
     return (_box("pn", center - width / 2, top, max(width, 8.0), height,
                  width / sx, height / sy, anchor="center"),
@@ -396,14 +407,15 @@ def draw_pcs(cv: Canvas, pcs, min_top_mm, tw):
     top = min(max(min_top_mm, flush_y), hard_cap) + dy
     left = PAD_MM + dx
     label_w = cv.tracked_width("PCS", size_mm, spacing, bold=False) + gap
+    num_bold = PCS["number_weight"] == "bold"
 
     def painter(c):
         c.text(left, top, "PCS", size_mm, letter_spacing_mm=spacing)
-        c.text(left + label_w, top, str(pcs), size_mm, bold=True,
+        c.text(left + label_w, top, str(pcs), size_mm, bold=num_bold,
                letter_spacing_mm=spacing)
 
     _squeeze(cv, painter, sx / sy, left)
-    total_w = (label_w + cv.tracked_width(str(pcs), size_mm, spacing, bold=True)) * (sx / sy)
+    total_w = (label_w + cv.tracked_width(str(pcs), size_mm, spacing, bold=num_bold)) * (sx / sy)
     return _box("pcs", left, top, max(total_w, 8.0), height,
                 total_w / sx, height / sy)
 
